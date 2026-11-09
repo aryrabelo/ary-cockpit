@@ -147,11 +147,14 @@ export default class Sidebar {
     const model = this.agents;
     const rows = model.rows;
     const waiting = rows.filter((r) => r.stage === "needs_you");
-    const order = [...waiting, ...rows.filter((r) => r.stage !== "needs_you")];
     // Home answers them in its NEXT MOVE and cards: there the waiting agents stay in the list below. Without the hub
     // nothing answers in place, so they stay in the list too.
     const band = active === "home" || model.down ? [] : waiting;
-    setAgentOrder(order.map((r) => r.address));
+    // Agent keys follow the agent rows as drawn: the band's agents, all of them, then the list with rows in a folded group
+    // skipped and sub-agents after their parent; an agent drawn twice keeps its first place.
+    const order = [];
+    const list = rail ? this.railRows(k, rows, order) : [...this.bandRows(k, band, order), ...this.agentRows(k, rows, band, cx, order), ...this.spaceRows(k, cx)];
+    setAgentOrder([...new Set(order)]);
 
     const navItem = (child, label, icon, count, key, tone) => {
       const on = active === child;
@@ -262,8 +265,7 @@ export default class Sidebar {
           .min_h(0)
           .gap(2)
           .overflow_y_scrollbar()
-          .when(rail, (e) => e.children(this.railRows(k, rows)))
-          .when(!rail, (e) => e.children([...this.bandRows(k, band), ...this.agentRows(k, rows, band, cx), ...this.spaceRows(k, cx)])),
+          .children(list),
       );
   }
 
@@ -348,10 +350,11 @@ export default class Sidebar {
     openOverlay({ mod: "cockpit", props: { app: "recap", ...(tab ? { tab } : {}) }, kind: "dialog", width: 0.8, height: 0.8 });
   }
 
-  /** The Needs you band: each waiting agent's question, answered in place. */
-  bandRows(k, band) {
+  /** The Needs you band: each waiting agent's question, answered in place; every band agent goes on `order`. */
+  bandRows(k, band, order) {
     if (!band.length) return [];
     const shown = band.slice(0, 3);
+    order.push(...band.map((r) => r.address));
     const now = Date.now();
     return [
       StageHeading("band-head", "Needs you", { color: k.blocked, count: band.length, pulse: true }),
@@ -447,9 +450,10 @@ export default class Sidebar {
     return HoverCard(`${id}-hover`, tracked, card, { width: 340, openDelay: 650 });
   }
 
-  /** Sub-agents an agent started (`hc run`), under it with tree lines; a click peeks. */
-  subRows(k, r) {
+  /** Sub-agents an agent started (`hc run`), under it with tree lines, their addresses pushed on `order`; a click peeks. */
+  subRows(k, r, order) {
     const kids = (terminals() ?? []).filter((t) => t.parent === r.address && t.state === "live");
+    order.push(...kids.map((t) => t.address));
     return kids.map((t, i) =>
       h_flex()
         .id(`sub-${t.address}`)
@@ -468,8 +472,9 @@ export default class Sidebar {
     );
   }
 
-  /** The agents not in the band, by ticket (else their space), by space, or by stage; pinned ones first. */
-  agentRows(k, rows, band, cx) {
+  /** The agents not in the band, by ticket (else their space), by space, or by stage; pinned ones first. The drawn
+   * rows' addresses go on `order`. */
+  agentRows(k, rows, band, cx, order) {
     const now = Date.now();
     const rest = rows.filter((r) => !band.includes(r));
     const mode = shared("cockpit.agents.group") ?? "ticket";
@@ -539,8 +544,9 @@ export default class Sidebar {
       );
       if (folded) continue;
       for (const r of g.members) {
+        order.push(r.address);
         out.push(this.agentRow(k, r, now, cx));
-        out.push(...this.subRows(k, r));
+        out.push(...this.subRows(k, r, order));
       }
     }
     out.push(div().h(8));
@@ -756,9 +762,11 @@ export default class Sidebar {
     return Object.fromEntries(Object.entries(kept).map(([id, c]) => [id, c.startsWith("#") ? c : MARK[c] ?? c]));
   }
 
-  /** The rail: a dot per waiting agent, then the spaces as avatars with their status. */
-  railRows(k, rows) {
+  /** The rail: a dot per waiting agent, then the spaces as avatars with their status; `order` gets the waiting agents,
+   * then every other agent in hub order, so the agent keys still reach them all. */
+  railRows(k, rows, order) {
     const waiting = rows.filter((r) => r.stage === "needs_you");
+    order.push(...waiting.map((r) => r.address), ...rows.filter((r) => r.stage !== "needs_you").map((r) => r.address));
     const colors = this.spaceColors(spaces());
     return [
       ...waiting.map((r) =>

@@ -190,8 +190,8 @@ const ROWS: &[Row] = &[
         fork: &["{bin}", "--fork", "{session}", "{prompt}"],
         run_fork: NONE,
         edits: NONE,
-        add_dir: NONE,
-        system: NONE,
+        add_dir: &["--add-dir", "{dir}"],
+        system: &["--append-system-prompt", "{text}"],
         models: NONE,
         transcripts: Transcripts::Omp,
     },
@@ -805,6 +805,12 @@ mod tests {
         assert_eq!(plain, ["/bin/codex", "exec", "--skip-git-repo-check", "--model", "gpt-5-mini", "Go."]);
         assert!(row("copilot").headless("Go.", &how).is_none(), "Copilot cannot branch headless");
         assert_eq!(row("copilot").headless("Go.", &Headless::default()).unwrap(), ["/bin/copilot", "-p", "Go."]);
+    }
+
+    #[test]
+    fn omp_passes_system_prompt_and_extra_dirs() {
+        let how = Headless { dirs: vec!["/rb".into()], system: Some("Be brief."), ..Default::default() };
+        assert_eq!(row("omp").headless("Go.", &how).unwrap(), ["/bin/omp", "-p", "Go.", "--add-dir", "/rb", "--append-system-prompt", "Be brief."]);
     }
 
     #[test]

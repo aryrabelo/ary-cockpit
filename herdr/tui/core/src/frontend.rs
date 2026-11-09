@@ -6,7 +6,7 @@
 //! Handles for things already open carry their frontend: an app terminal is `app:t3`, anything else a herdr pane id.
 
 use std::cell::Cell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc::channel;
 use std::time::Duration;
@@ -211,20 +211,32 @@ pub fn app_space_named(name: &str) -> Option<String> {
     app_spaces().into_iter().find(|s| s["name"] == name).and_then(|s| s["id"].as_str().map(str::to_string))
 }
 
-/// Shows the cockpit layout's block for an app (`inbox`, `runbook`, `todo`, ...), switching to the cockpit layout first.
-/// The mod's sidebar does it (`cockpit.go:<app>`), so it shows which one is in front.
+/// Shows the block for an app (`inbox`, `runbook`, `todo`, ...) in the shown layout when it holds cockpit's stack, else
+/// switches to the cockpit layout first. The mod's sidebar does it (`cockpit.go:<app>`), so it shows which one is in front.
 pub fn app_show(child: &str) -> bool {
-    if app_status().is_some_and(|s| s["layout"] != "cockpit") {
+    if app_status().is_some_and(|s| !shows_stack(&s, &app_home().join("layouts"))) {
         app_do("layout.switch", &json!({"name": "cockpit"}));
     }
     app_do(&format!("cockpit.go:{child}"), &json!({})).is_some() || app_do("layout.select", &json!({"stack": STACK, "child": child})).is_some()
 }
 
-/// Shows the work area, where the spaces' tabs are.
+/// Shows the work area, where the spaces' tabs are, when the shown layout holds cockpit's stack.
 pub fn app_show_work() {
-    if app_status().is_some_and(|s| s["layout"] == "cockpit") {
+    if app_status().is_some_and(|s| shows_stack(&s, &app_home().join("layouts"))) {
         app_do("cockpit.go:work", &json!({}));
     }
+}
+
+/// Whether the layout `herdr-app status` reports as shown holds cockpit's stack, read from its file in `layouts`.
+fn shows_stack(status: &Value, layouts: &Path) -> bool {
+    let Some(name) = status["layout"].as_str().filter(|n| !n.is_empty() && !n.contains(['/', '\\'])) else { return false };
+    files::load(&layouts.join(format!("{name}.json"))).is_some_and(|tree| holds_stack(&tree))
+}
+
+/// Whether a layout node, or a node under it, is cockpit's stack.
+fn holds_stack(node: &Value) -> bool {
+    (node["id"] == STACK && node["type"] == "stack")
+        || ["children", "floating"].iter().any(|key| node[key].as_array().is_some_and(|nodes| nodes.iter().any(holds_stack)))
 }
 
 /// The handle of a terminal a command made.
@@ -535,5 +547,38 @@ mod tests {
         assert_eq!(width_in("[ui]\n  sidebar_width = 40 # wide\n"), Some(40));
         assert_eq!(width_in("sidebar_widths = 3\n"), None);
         assert_eq!(width_in("theme = \"x\"\n"), None);
+    }
+
+    fn layouts(files: &[(&str, Value)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        for (name, tree) in files {
+            std::fs::write(dir.path().join(format!("{name}.json")), tree.to_string()).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn app_show_stays_in_a_renamed_cockpit_layout() {
+        let stack = json!({"id": "center", "type": "stack", "children": [{"id": "inbox", "type": "block"}]});
+        let tree = json!({"id": "root", "type": "row", "children": [{"id": "main-area", "type": "column", "children": [stack]}]});
+        let dir = layouts(&[("acme-cockpit", tree)]);
+        assert!(shows_stack(&json!({"layout": "acme-cockpit"}), dir.path()));
+    }
+
+    #[test]
+    fn app_show_switches_from_a_layout_without_the_stack() {
+        let tree = json!({"id": "root", "type": "row", "children": [{"id": "center", "type": "block", "content": {"mod": "tabs"}}]});
+        let dir = layouts(&[("main", tree)]);
+        assert!(!shows_stack(&json!({"layout": "main"}), dir.path()));
+        assert!(!shows_stack(&json!({"layout": "gone"}), dir.path()));
+        assert!(!shows_stack(&json!({"layout": "../main"}), dir.path()));
+    }
+
+    #[test]
+    fn app_show_work_needs_the_stack_in_the_shown_layout() {
+        let tree = json!({"id": "root", "type": "row", "floating": [{"id": "center", "type": "stack", "children": []}]});
+        let dir = layouts(&[("acme", tree)]);
+        assert!(shows_stack(&json!({"layout": "acme"}), dir.path()));
+        assert!(!shows_stack(&json!({}), dir.path()));
     }
 }

@@ -297,12 +297,13 @@ export default class Palette {
     return list;
   }
 
-  /** The key bound to an entry: `name` or `name:value`, in keys.json's global or cockpit sections. */
+  /** The key bound to an entry: `name` or `name:value`, in keys.json's global, cockpit or shown layout's sections. */
   keyOf(e, bound) {
     if (!e.name) return null;
     const v = Object.values(e.args ?? {})[0];
     const want = v === undefined ? e.name : `${e.name}:${v}`;
-    return bound.find((b) => (b.section === "global" || b.section === "layout:cockpit") && b.action === want)?.keys ?? null;
+    const shown = `layout:${shared("layout")}`;
+    return bound.find((b) => (b.section === "global" || b.section === "layout:cockpit" || b.section === shown) && b.action === want)?.keys ?? null;
   }
 
   /** The rows: grouped when empty, ranked while typing, then what the hub found. */

@@ -6,7 +6,7 @@
   "background": "canvas",
   "terminal_padding": [14, 12],
   "divider": { "width": 1, "color": "border" },
-  "preview": "layouts/cockpit.svg",
+  "preview": "layouts/ary-cockpit.svg",
   "floating": [
     { "id": "queue", "content": { "mod": "cockpit", "props": { "app": "queue" } }, "edge": "right", "align": "center", "peek": 44 }
   ],

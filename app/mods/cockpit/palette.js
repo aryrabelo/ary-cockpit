@@ -37,7 +37,7 @@ const APPS = [
   ["mail", "Mail", "mail"],
 ];
 
-// cockpit's window keys (keys.json's layout:cockpit), by name: [command, title, icon, keywords].
+// cockpit's window keys (keys.json's layout:ary-cockpit), by name: [command, title, icon, keywords].
 const COCKPIT_COMMANDS = [
   ["cockpit.recap", "Recap the agents", "sparkles", "whose move stages summary"],
   ["cockpit.next-waiting", "Next agent waiting for you", "bell", "needs you question jump"],
@@ -303,7 +303,7 @@ export default class Palette {
     const v = Object.values(e.args ?? {})[0];
     const want = v === undefined ? e.name : `${e.name}:${v}`;
     const shown = `layout:${shared("layout")}`;
-    return bound.find((b) => (b.section === "global" || b.section === "layout:cockpit" || b.section === shown) && b.action === want)?.keys ?? null;
+    return bound.find((b) => (b.section === "global" || b.section === "layout:ary-cockpit" || b.section === shown) && b.action === want)?.keys ?? null;
   }
 
   /** The rows: grouped when empty, ranked while typing, then what the hub found. */

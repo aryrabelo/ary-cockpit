@@ -323,7 +323,7 @@ impl Doctor {
         };
         let home = cockpit_core::frontend::app_home();
         let fix = format!("sh {}/cockpit.sh app install", self.link.display());
-        if !home.join("layouts/cockpit.json").is_file() || !home.join("mods/cockpit/main.js").is_file() {
+        if !home.join(format!("layouts/{}.json", cockpit_core::frontend::LAYOUT)).is_file() || !home.join("mods/cockpit/main.js").is_file() {
             warn(&format!("Herdr app without the cockpit layout and mod → {fix}"));
             return;
         }

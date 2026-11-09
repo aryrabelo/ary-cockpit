@@ -1,5 +1,5 @@
 {
-  "layout:cockpit": {
+  "layout:ary-cockpit": {
     "cmd-shift-p": "cockpit.palette",
     "cmd-alt-0": "cockpit.home",
     "cmd-alt-1": "cockpit.go:inbox",

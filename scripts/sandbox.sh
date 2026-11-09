@@ -86,7 +86,7 @@ start() {
   # The watcher notes its own pid: $! would name the subshell running in_box, and stop would leave the watcher behind.
   in_box sh -c 'echo $$ >"$1"; exec nohup "$2" app install --watch --from "$3"' sh "$box/watch.pid" "$bin" "$repo/app" >"$box/watch.log" 2>&1 &
   app "do" overlay.close >/dev/null 2>&1 || true
-  app "do" layout.switch '{"name": "cockpit"}' >/dev/null
+  app "do" layout.switch '{"name": "ary-cockpit"}' >/dev/null
   echo "sandbox: $box (HOME $fake_home, HERDR_APP_HOME $app_home)"
 }
 

@@ -34,7 +34,7 @@ fi
 pkill -f "(^|/)cockpit hub$"
 
 # The Herdr app takes the new layout and mod (it reloads a mod on its own), when it has them.
-[ -f "$app_home/layouts/cockpit.json" ] && sh "$root/cockpit.sh" app install >/dev/null
+[ -f "$app_home/layouts/ary-cockpit.json" ] && sh "$root/cockpit.sh" app install >/dev/null
 
 # A session waiting at its prompt reloads the plugin now; `cockpit doctor` names reload.sh for the ones that were busy.
 sh "$root/reload.sh" --idle >/dev/null 2>&1 || true

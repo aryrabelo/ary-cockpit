@@ -162,13 +162,13 @@ pub fn main(args: &[String]) {
             let from = args.iter().position(|a| a == "--from").and_then(|i| args.get(i + 1)).map(PathBuf::from).unwrap_or_else(source);
             let from = std::fs::canonicalize(&from).unwrap_or(from);
             let home = frontend::app_home();
-            let first = !home.join("layouts/cockpit.json").exists();
+            let first = !home.join(format!("layouts/{}.json", frontend::LAYOUT)).exists();
             match install(&from, &home, false) {
                 Ok(lines) => lines.iter().for_each(|l| println!("{l}")),
                 Err(err) => fail(&format!("cockpit app install: {err}")),
             }
             // The first install shows the cockpit layout once; Herdr's own stays a cmd-shift-l away.
-            if first && frontend::app_do("layout.switch", &json!({"name": "cockpit"})).is_some() {
+            if first && frontend::app_do("layout.switch", &json!({"name": frontend::LAYOUT})).is_some() {
                 println!("switched the Herdr window to the cockpit layout (cmd-shift-l switches layouts)");
             }
             if args.iter().any(|a| a == "--watch") {
@@ -177,8 +177,8 @@ pub fn main(args: &[String]) {
         }
         Some("uninstall") => {
             let home = frontend::app_home();
-            let _ = std::fs::remove_file(home.join("layouts/cockpit.json"));
-            let _ = std::fs::remove_file(home.join("layouts/cockpit.svg"));
+            let _ = std::fs::remove_file(home.join(format!("layouts/{}.json", frontend::LAYOUT)));
+            let _ = std::fs::remove_file(home.join(format!("layouts/{}.svg", frontend::LAYOUT)));
             let _ = remove(&home.join("mods/cockpit"));
             let _ = std::fs::remove_file(home.join("cockpit.json"));
             println!("removed the cockpit layout and mod from {}", home.display());
@@ -272,8 +272,8 @@ pub fn install(from: &Path, home: &Path, link: bool) -> Result<Vec<String>, Stri
     }
     let mut lines = Vec::new();
     let err = |e: std::io::Error| e.to_string();
-    for name in ["cockpit.json", "cockpit.svg"] {
-        place(&from.join("layouts").join(name), &home.join("layouts").join(name), link).map_err(err)?;
+    for name in [format!("{}.json", frontend::LAYOUT), format!("{}.svg", frontend::LAYOUT)] {
+        place(&from.join("layouts").join(&name), &home.join("layouts").join(&name), link).map_err(err)?;
     }
     let mod_dir = home.join("mods/cockpit");
     let mut files_in = Vec::new();
@@ -349,11 +349,12 @@ mod tests {
     fn installs_the_layout_and_mod_and_says_where_cockpit_is() {
         let from = tempfile::tempdir().unwrap();
         let home = tempfile::tempdir().unwrap();
+        let (layout, preview) = (format!("layouts/{}.json", frontend::LAYOUT), format!("layouts/{}.svg", frontend::LAYOUT));
         for (path, text) in [
             ("mods/cockpit/main.js", "x"),
             ("mods/cockpit/ui.js", "y"),
-            ("layouts/cockpit.json", "{}"),
-            ("layouts/cockpit.svg", "<svg/>"),
+            (layout.as_str(), "{}"),
+            (preview.as_str(), "<svg/>"),
             ("keys.json", "{\"global\": {\"cmd-k\": \"cockpit.palette\"}}"),
         ] {
             let p = from.path().join(path);

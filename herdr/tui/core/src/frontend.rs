@@ -26,6 +26,8 @@ pub const APP: &str = "app:";
 
 /// The stack in the cockpit layout that holds the work area and one block per app.
 pub const STACK: &str = "center";
+/// The name of cockpit's layout in the Herdr app.
+pub const LAYOUT: &str = "ary-cockpit";
 
 thread_local! {
     static CURRENT: Cell<Option<Frontend>> = const { Cell::new(None) };
@@ -215,7 +217,7 @@ pub fn app_space_named(name: &str) -> Option<String> {
 /// switches to the cockpit layout first. The mod's sidebar does it (`cockpit.go:<app>`), so it shows which one is in front.
 pub fn app_show(child: &str) -> bool {
     if app_status().is_some_and(|s| !shows_stack(&s, &app_home().join("layouts"))) {
-        app_do("layout.switch", &json!({"name": "cockpit"}));
+        app_do("layout.switch", &json!({"name": LAYOUT}));
     }
     app_do(&format!("cockpit.go:{child}"), &json!({})).is_some() || app_do("layout.select", &json!({"stack": STACK, "child": child})).is_some()
 }

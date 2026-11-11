@@ -145,15 +145,31 @@ fn session_title(path: &Path) -> Option<String> {
     custom.or(ai).filter(|t| !t.trim().is_empty())
 }
 
-/// "e2e-test-cockpit-herdr" → "E2e test cockpit herdr", cut to a tab's width.
+/// "e2e-test-cockpit-herdr" → "E2e test cockpit herdr", cut to a tab's width. A ticket ID it starts with stays whole
+/// ("ENG-41-store-quotas" → "ENG-41 store quotas"), and a title with a space keeps its dashes and underscores.
 fn tidy(title: &str) -> String {
-    let words = title.replace(['-', '_'], " ").split_whitespace().collect::<Vec<_>>().join(" ");
+    let (id, rest) = leading_id(title);
+    let rest = if title.contains(char::is_whitespace) { rest.to_string() } else { rest.replace(['-', '_'], " ") };
+    let words = id.into_iter().chain(rest.split_whitespace()).collect::<Vec<_>>().join(" ");
     let mut out: String = words.chars().take(TAB_MAX).collect();
     if words.chars().count() > TAB_MAX {
         out = out.trim_end().to_string() + "…";
     }
     let mut chars = out.chars();
     chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+}
+
+/// The ticket ID a title starts with, three or four capitals, a dash and two digits ("ENG-41"), and what follows its
+/// separator.
+fn leading_id(title: &str) -> (Option<&str>, &str) {
+    let b = title.as_bytes();
+    let letters = b.iter().take_while(|c| c.is_ascii_uppercase()).count();
+    let end = letters + 3;
+    let id = (3..=4).contains(&letters)
+        && b.get(letters) == Some(&b'-')
+        && b.get(letters + 1..end).is_some_and(|d| d.iter().all(u8::is_ascii_digit))
+        && !b.get(end).is_some_and(u8::is_ascii_alphanumeric);
+    if id { (Some(&title[..end]), title[end..].trim_start_matches(['-', '_'])) } else { (None, title) }
 }
 
 /// A few words from haiku for a session Claude Code has not titled: once per session, cached, on its first prompt only,
@@ -232,6 +248,13 @@ mod tests {
     fn a_title_reads_as_words() {
         assert_eq!(tidy("e2e-test-cockpit-herdr"), "E2e test cockpit herdr");
         assert_eq!(tidy("a-very-long-session-title-that-goes-on-and-on"), "A very long session title that g…");
+        assert_eq!(tidy("ENG-41-store-daily-quotas"), "ENG-41 store daily quotas");
+        assert_eq!(tidy("ENG-41"), "ENG-41");
+        assert_eq!(tidy("ENG-41 Store daily quotas"), "ENG-41 Store daily quotas");
+        assert_eq!(tidy("ENG-412-store-quotas"), "ENG 412 store quotas", "an ID has two digits");
+        assert_eq!(tidy("fix-12-flaky-tests"), "Fix 12 flaky tests", "an ID is in capitals");
+        assert_eq!(tidy("ENG-412 · Store and enforce"), "ENG-412 · Store and enforce");
+        assert_eq!(tidy("󰓦 SYNC: Sync git…"), "󰓦 SYNC: Sync git…");
     }
 
     #[test]

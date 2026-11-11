@@ -229,6 +229,13 @@ struct Found {
 /// How long what a terminal holds is trusted before it is looked at again (a /clear or a resume starts another session).
 const LOOK_AGAIN: Duration = Duration::from_secs(10);
 
+/// The folder an app terminal's session is looked for in: its foreground program's, else `cwd`, else `hc get`'s.
+/// A shell that `cd`ed or an agent started with its own folder runs somewhere other than the terminal's cwd.
+fn session_cwd<'a>(got: &'a Value, cwd: &'a str) -> &'a str {
+    let given = |c: &&str| !c.is_empty();
+    got["foreground"]["cwd"].as_str().filter(given).or(Some(cwd).filter(given)).or(got["cwd"].as_str()).unwrap_or_default()
+}
+
 /// An app terminal's `hc get` (again when `fresh`, else every LOOK_AGAIN) and its session, found again every
 /// LOOK_AGAIN: Herdr app terminals report none.
 fn app_session(handle: &str, address: &str, agent: Option<&Agent>, cwd: &str, fresh: bool) -> Found {
@@ -251,7 +258,7 @@ fn app_session(handle: &str, address: &str, agent: Option<&Agent>, cwd: &str, fr
     }
     let argv: Vec<String> = got["foreground"]["argv"].as_array().into_iter().flatten().filter_map(|a| a.as_str().map(str::to_string)).collect();
     let pid = got["foreground"]["pid"].as_u64();
-    let cwd = if cwd.is_empty() { got["cwd"].as_str().unwrap_or_default() } else { cwd };
+    let cwd = session_cwd(&got, cwd);
     let reported = got["agent_session"].as_str().or(got["agent_session"]["value"].as_str());
     let (session, transcript) = match agent {
         Some(a) => which(a, reported, None, pid, &argv, cwd, got["created_ms"].as_u64().unwrap_or(0)),
@@ -581,5 +588,14 @@ mod tests {
         let t = json!({"foreground": {"name": "claude"}, "title": "⠂ Fixing quotas"});
         assert_eq!(attached_claude(&t), Some(("working".to_string(), "Fixing quotas".to_string())));
         assert_eq!(attached_claude(&json!({"foreground": {"name": "codex"}, "title": "⠂ x"})), None);
+    }
+
+    #[test]
+    fn a_session_is_looked_for_where_the_foreground_program_runs() {
+        let got = json!({"cwd": "/home/maya", "foreground": {"cwd": "/home/maya/acme/api"}});
+        assert_eq!(session_cwd(&got, "/home/maya"), "/home/maya/acme/api", "the agent's folder, not its shell's");
+        let shell = json!({"cwd": "/home/maya", "foreground": {"cwd": ""}});
+        assert_eq!(session_cwd(&shell, "/home/maya/acme/web"), "/home/maya/acme/web", "no foreground folder: the one given");
+        assert_eq!(session_cwd(&json!({"cwd": "/home/maya"}), ""), "/home/maya", "neither: hc get's");
     }
 }

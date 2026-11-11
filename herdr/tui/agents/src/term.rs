@@ -274,7 +274,8 @@ fn app_session(handle: &str, address: &str, agent: Option<&Agent>, cwd: &str, fr
 
 /// Which session a terminal's agent holds, and its transcript: what Herdr reports (an id or the transcript's path),
 /// else Claude Code's own registry by the agent's process, else a session id on its command line (`codex resume
-/// <id>`), else the newest session the agent started in the terminal's folder since the terminal did.
+/// <id>`), else the session an oh-my-pi or pi process holds open, else the newest session the agent started in the
+/// terminal's folder since the terminal did.
 pub fn which(
     agent: &Agent,
     reported: Option<&str>,
@@ -306,6 +307,13 @@ pub fn which(
     if let Some((id, p)) = ids.into_iter().find_map(|id| Some((id.clone(), transcripts::find(kind, id, cwd)?))) {
         return (Some(id), Some(shown(p)));
     }
+    // An oh-my-pi or pi process holds open the session it writes; a newer one another process started here is not its.
+    let wrapper = argv.first().and_then(|a| Path::new(a).file_name()).is_some_and(|n| n != std::ffi::OsStr::new(agent.bin.as_str()));
+    if matches!(kind, Transcripts::Omp | Transcripts::Pi)
+        && let Some(p) = pid.and_then(|pid| held_transcript(kind, pid, wrapper))
+    {
+        return (transcripts::id_of(kind, &p), Some(shown(p)));
+    }
     // Without the terminal's start, the newest session in its folder could be any older one.
     match (since > 0).then(|| transcripts::latest(kind, cwd, since)).flatten() {
         Some(p) => (transcripts::id_of(kind, &p), Some(shown(p))),
@@ -317,6 +325,44 @@ pub fn which(
 fn claude_session_of(pid: u64) -> Option<String> {
     let v = files::load(&transcripts::claude_home().join(format!("sessions/{pid}.json")))?;
     v["sessionId"].as_str().filter(|s| !s.is_empty()).map(str::to_string)
+}
+
+/// The session transcript an agent process holds open under `kind`'s root, found with `lsof`. With `children` (a wrapper
+/// runs the agent), its direct children are looked at too.
+fn held_transcript(kind: Transcripts, pid: u64, children: bool) -> Option<PathBuf> {
+    let root = transcripts::root(kind)?;
+    let mut pids = vec![pid.to_string()];
+    if children {
+        pids.extend(output(&["pgrep".to_string(), "-P".to_string(), pid.to_string()], 5).unwrap_or_default().split_whitespace().map(str::to_string));
+    }
+    let listed = output(&["lsof".to_string(), "-p".to_string(), pids.join(","), "-Fan".to_string()], 5)?;
+    held_in(&root, &parse_lsof(&listed))
+}
+
+/// What `lsof -Fan` lists per file: its access (`r`, `w`, `u`, or a space when unknown) and its path.
+fn parse_lsof(out: &str) -> Vec<(char, PathBuf)> {
+    let (mut files, mut access) = (Vec::new(), ' ');
+    for line in out.lines() {
+        if let Some(a) = line.strip_prefix('a') {
+            access = a.chars().next().unwrap_or(' ');
+        } else if line.starts_with('f') {
+            access = ' ';
+        } else if let Some(path) = line.strip_prefix('n') {
+            files.push((access, PathBuf::from(path)));
+        }
+    }
+    files
+}
+
+/// Whether `path` is a session file under `root`: one folder deep, as oh-my-pi and pi keep them (a subagent's is deeper).
+fn is_session(root: &Path, path: &Path) -> bool {
+    path.strip_prefix(root).is_ok_and(|rel| rel.components().count() == 2) && path.extension().is_some_and(|e| e == "jsonl")
+}
+
+/// The session among the held files: one written to before one only read.
+fn held_in(root: &Path, held: &[(char, PathBuf)]) -> Option<PathBuf> {
+    let sessions: Vec<&(char, PathBuf)> = held.iter().filter(|(_, p)| is_session(root, p)).collect();
+    sessions.iter().find(|(access, _)| matches!(access, 'w' | 'u')).or(sessions.first()).map(|(_, p)| p.clone())
 }
 
 fn agent_id(program: &str) -> String {
@@ -597,5 +643,22 @@ mod tests {
         let shell = json!({"cwd": "/home/maya", "foreground": {"cwd": ""}});
         assert_eq!(session_cwd(&shell, "/home/maya/acme/web"), "/home/maya/acme/web", "no foreground folder: the one given");
         assert_eq!(session_cwd(&json!({"cwd": "/home/maya"}), ""), "/home/maya", "neither: hc get's");
+    }
+
+    #[test]
+    fn an_omp_terminal_holds_the_session_it_writes_not_a_newer_one_in_its_folder() {
+        let root = Path::new("/home/maya/.omp/agent/sessions");
+        let held = |listed: &str| held_in(root, &parse_lsof(listed));
+        let mine = "/home/maya/.omp/agent/sessions/-acme-api/2026-11-11T13-57-29-591Z_01a1cae6.jsonl";
+        let recap = "/home/maya/.omp/agent/sessions/-acme-api/2026-11-11T16-11-31-178Z_01a1cb60.jsonl";
+        let sub = "/home/maya/.omp/agent/sessions/-acme-api/2026-11-11T13-57-29-591Z_01a1cae6/0-sub.jsonl";
+        assert_eq!(
+            held(&format!("p79101\nf102\naw\nn{mine}\nf9\nar\nn{recap}")),
+            Some(PathBuf::from(mine)),
+            "the one it writes, not a newer one it only reads"
+        );
+        assert_eq!(held(&format!("p79101\nf9\nar\nn{recap}")), Some(PathBuf::from(recap)), "only read: still its session when nothing else is held");
+        assert_eq!(held(&format!("p79101\nf9\naw\nn{sub}")), None, "a subagent's transcript is not a session");
+        assert_eq!(held("p79101\nf4\naw\nn/home/maya/notes.jsonl"), None, "outside the sessions folder");
     }
 }

@@ -125,6 +125,7 @@ fn runner(kind: Transcripts, prompt: &str, model: Option<&str>) -> Result<Vec<St
     match a.id.as_str() {
         "claude" => argv.extend(["--no-session-persistence", "--tools", "", "--strict-mcp-config"].map(str::to_string)),
         "codex" => argv.extend(["--ephemeral", "--skip-git-repo-check"].map(str::to_string)),
+        "pi" | "omp" => argv.push("--no-session".to_string()),
         _ => {}
     }
     Ok(argv)
